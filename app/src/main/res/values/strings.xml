@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">Cat Flask Merge</string>
+    <string name="score_label">SCORE</string>
+    <string name="high_score_label">BEST</string>
+    <string name="next_label">NEXT</string>
+    <string name="game_over">GAME OVER</string>
+    <string name="restart">PLAY AGAIN</string>
+    <string name="pause">PAUSE</string>
+    <string name="resume">RESUME</string>
+</resources>
