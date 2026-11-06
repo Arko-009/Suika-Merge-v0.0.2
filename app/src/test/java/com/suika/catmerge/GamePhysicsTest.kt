@@ -105,5 +105,30 @@ class GamePhysicsTest {
         val ball = Ball(1L, 0f, 0f, 0, 30f)
         assertEquals("Visual scale must default to 1.0f to prevent visual overlap", 1.0f, ball.visualScale, 0.001f)
     }
+
+    @Test
+    fun testBallEntersChamberSmoothlyWithoutSpikeOrSpin() {
+        val flask = FlaskContainer()
+        flask.setup(800f, 1200f)
+        val engine = PhysicsEngine(flask, baseRadius = 30f)
+
+        // Drop a ball from the neck top
+        val ball = engine.addBall(flask.centerX, flask.neckTopY + 10f, 0)
+
+        // Simulate 60 frames (1 second of falling down the neck into the chamber)
+        for (i in 0 until 60) {
+            engine.step(0.016f)
+
+            // Verify velocity is always smooth and never supersonic
+            val speed = kotlin.math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy)
+            assertTrue("Ball speed must never glitch spike: speed=$speed at frame $i", speed <= 1200f)
+
+            // Verify angular velocity is natural and not crazy spinning
+            assertTrue("Ball spin must remain controlled: spin=${ball.angularVelocity} at frame $i", kotlin.math.abs(ball.angularVelocity) <= 10f)
+        }
+
+        // Verify the ball successfully reached the chamber (y > neckBottomY)
+        assertTrue("Ball must enter the lower chamber smoothly", ball.y > flask.neckBottomY)
+    }
 }
 

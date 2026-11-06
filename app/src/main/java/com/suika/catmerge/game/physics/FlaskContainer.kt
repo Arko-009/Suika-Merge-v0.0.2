@@ -188,21 +188,21 @@ class FlaskContainer {
     /**
      * Resolves collisions for balls against the neck and the RGB circle chamber.
      */
-    fun resolveBallCollision(ball: Ball, restitution: Float = 0.28f, friction: Float = 0.03f): Boolean {
+    fun resolveBallCollision(ball: Ball, restitution: Float = 0.25f, friction: Float = 0.03f): Boolean {
         var collided = false
 
         val leftX = centerX - neckHalfWidth
         val rightX = centerX + neckHalfWidth
 
-        // 1. Inside Neck vertical walls (for y < neckBottomY)
-        if (ball.y < neckBottomY + ball.radius * 0.5f) {
+        // 1. Inside Neck vertical walls (only above the chamber opening)
+        if (ball.y < neckBottomY) {
             // Left neck wall
             if (ball.x - ball.radius < leftX) {
                 val pen = leftX - (ball.x - ball.radius)
                 ball.x += pen
                 if (ball.vx < 0f) {
                     ball.vx = -ball.vx * restitution
-                    ball.angularVelocity -= ball.vy * 0.005f
+                    ball.angularVelocity = -ball.vy * 0.001f
                 }
                 collided = true
             }
@@ -213,22 +213,20 @@ class FlaskContainer {
                 ball.x -= pen
                 if (ball.vx > 0f) {
                     ball.vx = -ball.vx * restitution
-                    ball.angularVelocity += ball.vy * 0.005f
+                    ball.angularVelocity = ball.vy * 0.001f
                 }
                 collided = true
             }
         }
 
-        // 2. Corner junctions where neck meets the circle
-        val cornerLeftX = leftX
-        val cornerRightX = rightX
+        // 2. Corner junctions where neck meets the circle (smooth sliding entrance)
         val cornerY = neckBottomY
 
         // Left corner point collision
-        val cldx = ball.x - cornerLeftX
+        val cldx = ball.x - leftX
         val cldy = ball.y - cornerY
         val cldistSq = cldx * cldx + cldy * cldy
-        if (cldistSq < ball.radius * ball.radius && ball.y < cornerY) {
+        if (cldistSq < ball.radius * ball.radius && ball.x < leftX + ball.radius * 0.5f) {
             val dist = sqrt(cldistSq)
             if (dist > 0.0001f) {
                 val nx = cldx / dist
@@ -246,10 +244,10 @@ class FlaskContainer {
         }
 
         // Right corner point collision
-        val crdx = ball.x - cornerRightX
+        val crdx = ball.x - rightX
         val crdy = ball.y - cornerY
         val crdistSq = crdx * crdx + crdy * crdy
-        if (crdistSq < ball.radius * ball.radius && ball.y < cornerY) {
+        if (crdistSq < ball.radius * ball.radius && ball.x > rightX - ball.radius * 0.5f) {
             val dist = sqrt(crdistSq)
             if (dist > 0.0001f) {
                 val nx = crdx / dist
@@ -266,8 +264,10 @@ class FlaskContainer {
             }
         }
 
-        // 3. Inside the Circular Chamber (for y >= neckBottomY)
-        if (ball.y >= neckBottomY) {
+        // 3. Inside the Circular Chamber (ignoring the open neck entry corridor)
+        val inNeckOpening = (ball.y < circleCenterY) && (kotlin.math.abs(ball.x - centerX) < (neckHalfWidth - 2f))
+
+        if (!inNeckOpening) {
             val dx = ball.x - centerX
             val dy = ball.y - circleCenterY
             val distSq = dx * dx + dy * dy
@@ -291,7 +291,7 @@ class FlaskContainer {
                         val vty = ball.vy - vn * ny
                         ball.vx = -vn * restitution * nx + vtx * (1f - friction)
                         ball.vy = -vn * restitution * ny + vty * (1f - friction)
-                        ball.angularVelocity += (vtx * ny - vty * nx) * 0.005f
+                        ball.angularVelocity += (vtx * ny - vty * nx) * 0.001f
                     }
                     collided = true
                 }

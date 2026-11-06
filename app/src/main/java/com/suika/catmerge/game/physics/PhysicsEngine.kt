@@ -187,7 +187,18 @@ class PhysicsEngine(
                 val b = balls[i]
                 b.vx = (b.x - b.prevX) / subDt * 0.996f
                 b.vy = (b.y - b.prevY) / subDt * 0.996f
-                b.angularVelocity *= 0.992f
+
+                // Clamp max linear speed to prevent supersonic glitch velocities
+                val speedSq = b.vx * b.vx + b.vy * b.vy
+                val maxSpeed = 1200f
+                if (speedSq > maxSpeed * maxSpeed) {
+                    val s = maxSpeed / sqrt(speedSq)
+                    b.vx *= s
+                    b.vy *= s
+                }
+
+                // Clamp angular velocity to smooth, natural rolling spin (no crazy pinwheels)
+                b.angularVelocity = (b.angularVelocity * 0.985f).coerceIn(-10f, 10f)
                 b.update(subDt)
             }
         }
