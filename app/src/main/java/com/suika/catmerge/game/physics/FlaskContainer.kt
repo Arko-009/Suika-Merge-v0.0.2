@@ -3,289 +3,275 @@ package com.suika.catmerge.game.physics
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.DashPathEffect
-import android.graphics.LinearGradient
+import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
-import android.graphics.RadialGradient
 import android.graphics.RectF
-import android.graphics.Shader
+import android.graphics.SweepGradient
 import kotlin.math.asin
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
- * Geometric representation and collision model of the chemical flask container.
- * Features:
- * - Flared mouth at the top for smooth ball drops
- * - Vertical neck channel
- * - Smooth curved shoulders
- * - Large circular bottom bulb chamber
- * - Danger line with pulse animation
+ * Exact RGB Rainbow Flask Container as requested:
+ * - Clean vertical white neck at the top
+ * - Large RGB Rainbow Glowing circular chamber at the bottom
+ * - Solid physics collision boundaries with zero tunneling
  */
 class FlaskContainer {
 
     var centerX: Float = 0f
         private set
-    var bulbCenterY: Float = 0f
+    var circleCenterY: Float = 0f
         private set
-    var bulbRadius: Float = 0f
+    var circleRadius: Float = 0f
         private set
     var neckHalfWidth: Float = 0f
         private set
     var neckTopY: Float = 0f
         private set
-    var shoulderY: Float = 0f
+    var neckBottomY: Float = 0f
         private set
     var dangerLineY: Float = 0f
         private set
 
-    // Collision boundary segments: Pair of (start, end)
-    val wallSegments = ArrayList<Pair<Vector2D, Vector2D>>()
+    // Aliases for backwards compatibility
+    val bulbCenterY: Float get() = circleCenterY
+    val bulbRadius: Float get() = circleRadius
+    val shoulderY: Float get() = neckBottomY
 
-    // Drawing paths and paints (lazily initialized for drawing to keep physics decoupled from Android UI)
-    private var pathsInitialized = false
-    private val flaskOutlinePath by lazy { Path() }
-    private val flaskFillPath by lazy { Path() }
-    private val dangerLinePath by lazy { Path() }
+    // Intersection geometry
+    private var openingHalfAngleDeg: Float = 0f
+    private var arcStartAngle: Float = 0f
+    private var arcSweepAngle: Float = 0f
 
-    private val outlinePaint by lazy {
-        Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeWidth = 10f
-            color = Color.parseColor("#4DEEEA") // Neon Cyan Glass
-            strokeCap = Paint.Cap.ROUND
-            strokeJoin = Paint.Join.ROUND
-        }
+    // Rendering Paths & Rects
+    private val circleBounds = RectF()
+    private val leftNeckPath = Path()
+    private val rightNeckPath = Path()
+    private val arcPath = Path()
+    private val dangerLinePath = Path()
+
+    // Paints
+    private val neckGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 14f
+        color = Color.parseColor("#35FFFFFF")
+        strokeCap = Paint.Cap.ROUND
     }
 
-    private val outerGlowPaint by lazy {
-        Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeWidth = 22f
-            color = Color.parseColor("#224DEEEA")
-            strokeCap = Paint.Cap.ROUND
-            strokeJoin = Paint.Join.ROUND
-        }
+    private val neckPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 5f
+        color = Color.WHITE
+        strokeCap = Paint.Cap.ROUND
     }
 
-    private val glassHighlightPaint by lazy {
-        Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeWidth = 3f
-            color = Color.parseColor("#80FFFFFF")
-            strokeCap = Paint.Cap.ROUND
-        }
+    private val rainbowGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 20f
+        strokeCap = Paint.Cap.ROUND
     }
 
-    private val glassInnerFillPaint by lazy {
-        Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.FILL
-        }
+    private val rainbowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 7f
+        strokeCap = Paint.Cap.ROUND
     }
 
-    private val dangerLinePaint by lazy {
-        Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeWidth = 4f
-            color = Color.parseColor("#FF5252")
-            pathEffect = DashPathEffect(floatArrayOf(16f, 12f), 0f)
-        }
+    private val dangerLinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 4f
+        color = Color.parseColor("#FF5252")
+        pathEffect = DashPathEffect(floatArrayOf(14f, 12f), 0f)
     }
 
-    private val dangerGlowPaint by lazy {
-        Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeWidth = 12f
-            color = Color.parseColor("#44FF5252")
-        }
+    private val dangerGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 12f
+        color = Color.parseColor("#44FF5252")
     }
 
+    // RGB Rainbow Shaders
+    private var rainbowShader: SweepGradient? = null
+    private var rainbowGlowShader: SweepGradient? = null
+    private val shaderMatrix = Matrix()
+    private var rainbowRotation = 0f
     private var dangerPulseTime = 0f
 
-    /**
-     * Initializes the flask geometry adapted to screen dimensions.
-     */
+    private val rainbowColors = intArrayOf(
+        Color.parseColor("#FF0055"), // Neon Pink/Red
+        Color.parseColor("#FF7700"), // Orange
+        Color.parseColor("#FFDD00"), // Yellow
+        Color.parseColor("#00FF66"), // Neon Green
+        Color.parseColor("#00E5FF"), // Cyan
+        Color.parseColor("#3366FF"), // Royal Blue
+        Color.parseColor("#CC00FF"), // Purple/Magenta
+        Color.parseColor("#FF0055")  // Loop back to Neon Red
+    )
+
     fun setup(viewWidth: Float, viewHeight: Float) {
         centerX = viewWidth / 2f
-        // Bottom bulb sits in lower half of screen
-        bulbRadius = (viewWidth * 0.44f).coerceAtMost(viewHeight * 0.28f)
-        bulbCenterY = viewHeight - bulbRadius - 100f
 
-        // Neck dimensions
-        neckHalfWidth = bulbRadius * 0.32f
-        val neckHeight = bulbRadius * 1.05f
-        shoulderY = bulbCenterY - bulbRadius * 0.65f
-        neckTopY = shoulderY - neckHeight
-        dangerLineY = neckTopY + (shoulderY - neckTopY) * 0.35f
+        // Bottom circular chamber occupies ~90% of screen width
+        circleRadius = (viewWidth * 0.45f).coerceAtMost(viewHeight * 0.32f)
+        circleCenterY = viewHeight - circleRadius - 40f
 
-        rebuildGeometry()
+        // Neck dimensions: vertical white lines
+        neckHalfWidth = circleRadius * 0.22f
+        neckTopY = 90f // just below top HUD
+
+        // Intersection with circle: x = cx ± w_half -> (y - cy)^2 = R^2 - w_half^2
+        val dy = sqrt(circleRadius * circleRadius - neckHalfWidth * neckHalfWidth)
+        neckBottomY = circleCenterY - dy
+
+        // Danger line located near top third of neck
+        dangerLineY = neckTopY + (neckBottomY - neckTopY) * 0.35f
+
+        // Arc angles: standard 0=East, 90=South, 180=West, 270=North
+        val halfAngleRad = asin(neckHalfWidth / circleRadius)
+        openingHalfAngleDeg = Math.toDegrees(halfAngleRad.toDouble()).toFloat()
+
+        // Arc starts at right intersection (270 + halfAngle) and sweeps clockwise
+        arcStartAngle = -90f + openingHalfAngleDeg
+        arcSweepAngle = 360f - 2f * openingHalfAngleDeg
+
+        rebuildPaths()
     }
 
-    private fun rebuildGeometry() {
-        wallSegments.clear()
-        pathsInitialized = false
-
-        val leftNeckX = centerX - neckHalfWidth
-        val rightNeckX = centerX + neckHalfWidth
-        val flareXOffset = neckHalfWidth * 0.45f
-        val flareYOffset = 25f
-
-        val leftMouth = Vector2D(leftNeckX - flareXOffset, neckTopY - flareYOffset)
-        val leftNeckTop = Vector2D(leftNeckX, neckTopY)
-        val leftShoulderTop = Vector2D(leftNeckX, shoulderY)
-
-        val rightMouth = Vector2D(rightNeckX + flareXOffset, neckTopY - flareYOffset)
-        val rightNeckTop = Vector2D(rightNeckX, neckTopY)
-        val rightShoulderTop = Vector2D(rightNeckX, shoulderY)
-
-        val connectAngle = Math.toRadians(40.0).toFloat()
-        val bulbLeftConnect = Vector2D(
-            centerX - bulbRadius * cos(connectAngle),
-            bulbCenterY - bulbRadius * sin(connectAngle)
-        )
-        val bulbRightConnect = Vector2D(
-            centerX + bulbRadius * cos(connectAngle),
-            bulbCenterY - bulbRadius * sin(connectAngle)
+    private fun rebuildPaths() {
+        circleBounds.set(
+            centerX - circleRadius,
+            circleCenterY - circleRadius,
+            centerX + circleRadius,
+            circleCenterY + circleRadius
         )
 
-        // 1. Left mouth flare
-        wallSegments.add(Pair(leftMouth, leftNeckTop))
-        // 2. Left neck vertical wall
-        wallSegments.add(Pair(leftNeckTop, leftShoulderTop))
+        // Neck lines
+        leftNeckPath.reset()
+        leftNeckPath.moveTo(centerX - neckHalfWidth, neckTopY)
+        leftNeckPath.lineTo(centerX - neckHalfWidth, neckBottomY)
 
-        // 3. Left shoulder curve
-        val leftShoulderSegments = 5
-        var prevLeft = leftShoulderTop
-        for (i in 1..leftShoulderSegments) {
-            val t = i.toFloat() / leftShoulderSegments
-            val p0 = leftShoulderTop
-            val p1 = Vector2D(leftNeckX - bulbRadius * 0.15f, shoulderY + bulbRadius * 0.25f)
-            val p2 = bulbLeftConnect
-            val ix = (1 - t) * (1 - t) * p0.x + 2 * (1 - t) * t * p1.x + t * t * p2.x
-            val iy = (1 - t) * (1 - t) * p0.y + 2 * (1 - t) * t * p1.y + t * t * p2.y
-            val cur = Vector2D(ix, iy)
-            wallSegments.add(Pair(prevLeft, cur))
-            prevLeft = cur
-        }
+        rightNeckPath.reset()
+        rightNeckPath.moveTo(centerX + neckHalfWidth, neckTopY)
+        rightNeckPath.lineTo(centerX + neckHalfWidth, neckBottomY)
 
-        // 4. Right mouth flare
-        wallSegments.add(Pair(rightNeckTop, rightMouth))
-        // 5. Right neck vertical wall
-        wallSegments.add(Pair(rightShoulderTop, rightNeckTop))
+        // Arc path
+        arcPath.reset()
+        arcPath.arcTo(circleBounds, arcStartAngle, arcSweepAngle, false)
 
-        // 6. Right shoulder curve
-        var prevRight = bulbRightConnect
-        for (i in 1..leftShoulderSegments) {
-            val t = i.toFloat() / leftShoulderSegments
-            val p0 = bulbRightConnect
-            val p1 = Vector2D(rightNeckX + bulbRadius * 0.15f, shoulderY + bulbRadius * 0.25f)
-            val p2 = rightShoulderTop
-            val ix = (1 - t) * (1 - t) * p0.x + 2 * (1 - t) * t * p1.x + t * t * p2.x
-            val iy = (1 - t) * (1 - t) * p0.y + 2 * (1 - t) * t * p1.y + t * t * p2.y
-            val cur = Vector2D(ix, iy)
-            wallSegments.add(Pair(prevRight, cur))
-            prevRight = cur
-        }
-    }
-
-    private fun ensurePathsBuilt() {
-        if (pathsInitialized) return
-        pathsInitialized = true
-
-        flaskOutlinePath.reset()
-        flaskFillPath.reset()
+        // Danger line across neck
         dangerLinePath.reset()
+        dangerLinePath.moveTo(centerX - neckHalfWidth + 6f, dangerLineY)
+        dangerLinePath.lineTo(centerX + neckHalfWidth - 6f, dangerLineY)
 
-        val leftNeckX = centerX - neckHalfWidth
-        val rightNeckX = centerX + neckHalfWidth
-        val flareXOffset = neckHalfWidth * 0.45f
-        val flareYOffset = 25f
+        // Setup RGB sweep gradients
+        rainbowShader = SweepGradient(centerX, circleCenterY, rainbowColors, null)
+        rainbowGlowShader = SweepGradient(centerX, circleCenterY, rainbowColors, null)
 
-        val leftMouth = Vector2D(leftNeckX - flareXOffset, neckTopY - flareYOffset)
-        val leftNeckTop = Vector2D(leftNeckX, neckTopY)
-        val leftShoulderTop = Vector2D(leftNeckX, shoulderY)
+        rainbowPaint.shader = rainbowShader
+        rainbowGlowPaint.shader = rainbowGlowShader
+        rainbowGlowPaint.alpha = 80
+    }
 
-        val rightMouth = Vector2D(rightNeckX + flareXOffset, neckTopY - flareYOffset)
-        val rightNeckTop = Vector2D(rightNeckX, neckTopY)
-        val rightShoulderTop = Vector2D(rightNeckX, shoulderY)
+    fun update(deltaTime: Float) {
+        // Slowly rotate RGB rainbow around the circle for animated neon effect
+        rainbowRotation = (rainbowRotation + deltaTime * 30f) % 360f
+        shaderMatrix.setRotate(rainbowRotation, centerX, circleCenterY)
+        rainbowShader?.setLocalMatrix(shaderMatrix)
+        rainbowGlowShader?.setLocalMatrix(shaderMatrix)
 
-        val connectAngle = Math.toRadians(40.0).toFloat()
-        val bulbLeftConnect = Vector2D(
-            centerX - bulbRadius * cos(connectAngle),
-            bulbCenterY - bulbRadius * sin(connectAngle)
-        )
-        val bulbRightConnect = Vector2D(
-            centerX + bulbRadius * cos(connectAngle),
-            bulbCenterY - bulbRadius * sin(connectAngle)
-        )
-
-        // Build Paths for rendering
-        flaskOutlinePath.moveTo(leftMouth.x, leftMouth.y)
-        flaskOutlinePath.lineTo(leftNeckTop.x, leftNeckTop.y)
-        flaskOutlinePath.lineTo(leftShoulderTop.x, leftShoulderTop.y)
-        flaskOutlinePath.quadTo(
-            leftNeckX - bulbRadius * 0.15f, shoulderY + bulbRadius * 0.25f,
-            bulbLeftConnect.x, bulbLeftConnect.y
-        )
-
-        val bulbRect = RectF(
-            centerX - bulbRadius,
-            bulbCenterY - bulbRadius,
-            centerX + bulbRadius,
-            bulbCenterY + bulbRadius
-        )
-        val startAngleDeg = Math.toDegrees(
-            kotlin.math.atan2(
-                (bulbLeftConnect.y - bulbCenterY).toDouble(),
-                (bulbLeftConnect.x - centerX).toDouble()
-            )
-        ).toFloat()
-        val endAngleDeg = Math.toDegrees(
-            kotlin.math.atan2(
-                (bulbRightConnect.y - bulbCenterY).toDouble(),
-                (bulbRightConnect.x - centerX).toDouble()
-            )
-        ).toFloat()
-        val sweepAngleDeg = (360f - (startAngleDeg - endAngleDeg)) % 360f
-
-        flaskOutlinePath.arcTo(bulbRect, startAngleDeg, sweepAngleDeg, false)
-        flaskOutlinePath.quadTo(
-            rightNeckX + bulbRadius * 0.15f, shoulderY + bulbRadius * 0.25f,
-            rightShoulderTop.x, rightShoulderTop.y
-        )
-        flaskOutlinePath.lineTo(rightNeckTop.x, rightNeckTop.y)
-        flaskOutlinePath.lineTo(rightMouth.x, rightMouth.y)
-
-        flaskFillPath.set(flaskOutlinePath)
-        flaskFillPath.close()
-
-        dangerLinePath.moveTo(leftNeckX + 6f, dangerLineY)
-        dangerLinePath.lineTo(rightNeckX - 6f, dangerLineY)
-
-        glassInnerFillPaint.shader = LinearGradient(
-            centerX, neckTopY,
-            centerX, bulbCenterY + bulbRadius,
-            Color.parseColor("#15223A5E"),
-            Color.parseColor("#250A192F"),
-            Shader.TileMode.CLAMP
-        )
+        dangerPulseTime += deltaTime * 5f
     }
 
     /**
-     * Collides a ball against the flask boundaries (walls and circular bulb).
-     * Returns true if collision occurred.
+     * Resolves collisions for balls against the neck and the RGB circle chamber.
      */
-    fun resolveBallCollision(ball: Ball, restitution: Float = 0.25f, friction: Float = 0.02f): Boolean {
+    fun resolveBallCollision(ball: Ball, restitution: Float = 0.28f, friction: Float = 0.03f): Boolean {
         var collided = false
 
-        // 1. Check against bulb circular chamber
-        // Only if ball is below shoulder level or in bulb range
-        if (ball.y + ball.radius > shoulderY) {
+        val leftX = centerX - neckHalfWidth
+        val rightX = centerX + neckHalfWidth
+
+        // 1. Inside Neck vertical walls (for y < neckBottomY)
+        if (ball.y < neckBottomY + ball.radius * 0.5f) {
+            // Left neck wall
+            if (ball.x - ball.radius < leftX) {
+                val pen = leftX - (ball.x - ball.radius)
+                ball.x += pen
+                if (ball.vx < 0f) {
+                    ball.vx = -ball.vx * restitution
+                    ball.angularVelocity -= ball.vy * 0.005f
+                }
+                collided = true
+            }
+
+            // Right neck wall
+            if (ball.x + ball.radius > rightX) {
+                val pen = (ball.x + ball.radius) - rightX
+                ball.x -= pen
+                if (ball.vx > 0f) {
+                    ball.vx = -ball.vx * restitution
+                    ball.angularVelocity += ball.vy * 0.005f
+                }
+                collided = true
+            }
+        }
+
+        // 2. Corner junctions where neck meets the circle
+        val cornerLeftX = leftX
+        val cornerRightX = rightX
+        val cornerY = neckBottomY
+
+        // Left corner point collision
+        val cldx = ball.x - cornerLeftX
+        val cldy = ball.y - cornerY
+        val cldistSq = cldx * cldx + cldy * cldy
+        if (cldistSq < ball.radius * ball.radius && ball.y < cornerY) {
+            val dist = sqrt(cldistSq)
+            if (dist > 0.0001f) {
+                val nx = cldx / dist
+                val ny = cldy / dist
+                val pen = ball.radius - dist
+                ball.x += nx * pen
+                ball.y += ny * pen
+                val vn = ball.vx * nx + ball.vy * ny
+                if (vn < 0f) {
+                    ball.vx -= (1f + restitution) * vn * nx
+                    ball.vy -= (1f + restitution) * vn * ny
+                }
+                collided = true
+            }
+        }
+
+        // Right corner point collision
+        val crdx = ball.x - cornerRightX
+        val crdy = ball.y - cornerY
+        val crdistSq = crdx * crdx + crdy * crdy
+        if (crdistSq < ball.radius * ball.radius && ball.y < cornerY) {
+            val dist = sqrt(crdistSq)
+            if (dist > 0.0001f) {
+                val nx = crdx / dist
+                val ny = crdy / dist
+                val pen = ball.radius - dist
+                ball.x += nx * pen
+                ball.y += ny * pen
+                val vn = ball.vx * nx + ball.vy * ny
+                if (vn < 0f) {
+                    ball.vx -= (1f + restitution) * vn * nx
+                    ball.vy -= (1f + restitution) * vn * ny
+                }
+                collided = true
+            }
+        }
+
+        // 3. Inside the Circular Chamber (for y >= neckBottomY)
+        if (ball.y >= neckBottomY) {
             val dx = ball.x - centerX
-            val dy = ball.y - bulbCenterY
+            val dy = ball.y - circleCenterY
             val distSq = dx * dx + dy * dy
-            val maxAllowedDist = bulbRadius - ball.radius
+            val maxAllowedDist = circleRadius - ball.radius
 
             if (distSq > maxAllowedDist * maxAllowedDist && maxAllowedDist > 0f) {
                 val dist = sqrt(distSq)
@@ -300,12 +286,11 @@ class FlaskContainer {
 
                     // Reflect velocity
                     val vn = ball.vx * nx + ball.vy * ny
-                    if (vn < 0) {
+                    if (vn < 0f) {
                         val vtx = ball.vx - vn * nx
                         val vty = ball.vy - vn * ny
                         ball.vx = -vn * restitution * nx + vtx * (1f - friction)
                         ball.vy = -vn * restitution * ny + vty * (1f - friction)
-                        // Rolling friction / spin
                         ball.angularVelocity += (vtx * ny - vty * nx) * 0.005f
                     }
                     collided = true
@@ -313,102 +298,31 @@ class FlaskContainer {
             }
         }
 
-        // 2. Check against line segments (neck walls, shoulders, mouth flares)
-        for (seg in wallSegments) {
-            val p1 = seg.first
-            val p2 = seg.second
-
-            val segDx = p2.x - p1.x
-            val segDy = p2.y - p1.y
-            val segLenSq = segDx * segDx + segDy * segDy
-            if (segLenSq < 0.001f) continue
-
-            // Project ball center onto segment
-            val t = ((ball.x - p1.x) * segDx + (ball.y - p1.y) * segDy) / segLenSq
-            val clampedT = t.coerceIn(0f, 1f)
-
-            val closestX = p1.x + clampedT * segDx
-            val closestY = p1.y + clampedT * segDy
-
-            val distDx = ball.x - closestX
-            val distDy = ball.y - closestY
-            val distSq = distDx * distDx + distDy * distDy
-
-            if (distSq < ball.radius * ball.radius) {
-                val dist = sqrt(distSq)
-                val nx: Float
-                val ny: Float
-                val penetration: Float
-
-                if (dist > 0.0001f) {
-                    nx = distDx / dist
-                    ny = distDy / dist
-                    penetration = ball.radius - dist
-                } else {
-                    // Ball center exactly on segment, push towards container center
-                    nx = if (ball.x < centerX) 1f else -1f
-                    ny = 0f
-                    penetration = ball.radius
-                }
-
-                // Push ball out of wall
-                ball.x += nx * penetration
-                ball.y += ny * penetration
-
-                // Reflect velocity
-                val vn = ball.vx * nx + ball.vy * ny
-                if (vn < 0) {
-                    val vtx = ball.vx - vn * nx
-                    val vty = ball.vy - vn * ny
-                    ball.vx = -vn * restitution * nx + vtx * (1f - friction)
-                    ball.vy = -vn * restitution * ny + vty * (1f - friction)
-                    ball.angularVelocity += (vtx * ny - vty * nx) * 0.005f
-                }
-                collided = true
-            }
-        }
-
         return collided
     }
 
-    fun update(deltaTime: Float) {
-        dangerPulseTime += deltaTime * 5f
-    }
-
     /**
-     * Renders the glass flask container.
+     * Renders the white neck and glowing RGB Rainbow circular chamber.
      */
     fun draw(canvas: Canvas, isInDanger: Boolean) {
-        ensurePathsBuilt()
+        // 1. White Vertical Neck (outer glow + inner white stroke)
+        canvas.drawPath(leftNeckPath, neckGlowPaint)
+        canvas.drawPath(rightNeckPath, neckGlowPaint)
+        canvas.drawPath(leftNeckPath, neckPaint)
+        canvas.drawPath(rightNeckPath, neckPaint)
 
-        // 1. Inner glass ambient fill
-        canvas.drawPath(flaskFillPath, glassInnerFillPaint)
+        // 2. RGB Rainbow Circular Chamber (outer bloom + inner neon stroke)
+        canvas.drawPath(arcPath, rainbowGlowPaint)
+        canvas.drawPath(arcPath, rainbowPaint)
 
-        // 2. Outer glow
-        canvas.drawPath(flaskOutlinePath, outerGlowPaint)
-
-        // 3. Main neon outline
-        canvas.drawPath(flaskOutlinePath, outlinePaint)
-
-        // 4. Subtle inner highlight curve (gives 3D glass sheen)
-        canvas.drawArc(
-            RectF(
-                centerX - bulbRadius + 14f,
-                bulbCenterY - bulbRadius + 14f,
-                centerX + bulbRadius - 14f,
-                bulbCenterY + bulbRadius - 14f
-            ),
-            110f, 120f, false, glassHighlightPaint
-        )
-
-        // 5. Danger Line
+        // 3. Danger Line across neck
         if (isInDanger) {
-            val pulseAlpha = (120 + 135 * sin(dangerPulseTime.toDouble())).toInt().coerceIn(40, 255)
+            val pulseAlpha = (130 + 125 * sin(dangerPulseTime.toDouble())).toInt().coerceIn(40, 255)
             dangerLinePaint.alpha = pulseAlpha
-            dangerGlowPaint.alpha = (pulseAlpha * 0.4f).toInt()
+            dangerGlowPaint.alpha = (pulseAlpha * 0.45f).toInt()
             canvas.drawPath(dangerLinePath, dangerGlowPaint)
         } else {
-            dangerLinePaint.alpha = 90
+            dangerLinePaint.alpha = 80
         }
         canvas.drawPath(dangerLinePath, dangerLinePaint)
     }

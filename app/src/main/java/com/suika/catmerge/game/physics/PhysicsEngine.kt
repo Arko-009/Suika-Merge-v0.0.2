@@ -15,7 +15,11 @@ class PhysicsEngine(
     private val nextId = AtomicLong(1)
 
     // Physics tuning
-    var gravity: Float = 1600f // px/s^2
+    var gravityX: Float = 0f
+    var gravityY: Float = 1600f // px/s^2
+    var gravity: Float
+        get() = gravityY
+        set(value) { gravityY = value }
     var restitution: Float = 0.28f // bounciness
     var friction: Float = 0.04f // friction coefficient
     var linearDamping: Float = 0.998f
@@ -204,7 +208,7 @@ class PhysicsEngine(
      */
     fun applyStirImpulse(strength: Float = 1.0f) {
         val cx = flask.centerX
-        val cy = flask.bulbCenterY
+        val cy = flask.circleCenterY
 
         for (ball in balls) {
             val dx = ball.x - cx

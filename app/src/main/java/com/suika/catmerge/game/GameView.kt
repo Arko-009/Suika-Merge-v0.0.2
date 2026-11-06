@@ -124,12 +124,7 @@ class GameView @JvmOverloads constructor(
         surfaceHeight = height.toFloat()
 
         setupAmbientBubbles()
-        backgroundPaint.shader = LinearGradient(
-            0f, 0f, 0f, surfaceHeight,
-            Color.parseColor("#0D0F18"),
-            Color.parseColor("#171A29"),
-            Shader.TileMode.CLAMP
-        )
+        backgroundPaint.color = Color.BLACK
 
         resumeGame()
     }
@@ -138,8 +133,8 @@ class GameView @JvmOverloads constructor(
         surfaceWidth = width.toFloat()
         surfaceHeight = height.toFloat()
         engine?.flask?.setup(surfaceWidth, surfaceHeight)
-        // Set base ball radius scaled appropriately for the flask neck
-        val baseRadius = engine?.flask?.neckHalfWidth?.times(0.42f) ?: 36f
+        // Set base ball radius scaled comfortably for the neck (cat fits smoothly inside vertical white lines)
+        val baseRadius = engine?.flask?.neckHalfWidth?.times(0.55f) ?: 32f
         engine?.physics?.baseRadius = baseRadius
     }
 
@@ -323,7 +318,7 @@ class GameView @JvmOverloads constructor(
         val ballRadius = Ball.calculateRadius(currentLvl, baseR)
 
         // Aim dotted line straight down into neck
-        canvas.drawLine(dropX, dropY + ballRadius, dropX, flask.shoulderY, aimLinePaint)
+        canvas.drawLine(dropX, dropY + ballRadius, dropX, flask.neckBottomY, aimLinePaint)
 
         // Draw upcoming queued ball at dropper
         val bmp = ballBitmaps[currentLvl.coerceIn(0, ballBitmaps.size - 1)]

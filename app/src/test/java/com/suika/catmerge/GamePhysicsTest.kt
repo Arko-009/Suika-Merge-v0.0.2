@@ -55,9 +55,9 @@ class GamePhysicsTest {
 
         val engine = PhysicsEngine(flask, baseRadius = 30f)
 
-        // Add two Level 0 balls in overlapping position
-        val b1 = engine.addBall(400f, 600f, 0)
-        val b2 = engine.addBall(405f, 600f, 0)
+        // Add two Level 0 balls in overlapping position inside chamber
+        val b1 = engine.addBall(400f, 850f, 0)
+        val b2 = engine.addBall(405f, 850f, 0)
 
         var mergedLevel = -1
         engine.mergeListener = object : PhysicsEngine.MergeListener {
