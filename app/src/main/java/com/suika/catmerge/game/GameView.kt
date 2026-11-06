@@ -372,3 +372,4 @@ class GameView @JvmOverloads constructor(
         return super.onTouchEvent(event)
     }
 }
+

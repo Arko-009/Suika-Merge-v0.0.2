@@ -37,3 +37,4 @@ class GamePreferences(context: Context) {
         private const val KEY_TOTAL_MERGES = "total_merges"
     }
 }
+

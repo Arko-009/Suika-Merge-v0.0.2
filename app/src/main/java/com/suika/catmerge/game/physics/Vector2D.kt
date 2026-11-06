@@ -98,3 +98,4 @@ data class Vector2D(var x: Float = 0f, var y: Float = 0f) {
 
     fun copy(): Vector2D = Vector2D(x, y)
 }
+

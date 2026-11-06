@@ -127,3 +127,4 @@ The APK has been compiled and verified:
 - **Location**: `app/build/outputs/apk/debug/app-debug.apk`
 - **Package**: `com.suika.catmerge`
 - **Target OS**: Android 8.0 (API 26) through Android 15 / 16 (API 36)
+

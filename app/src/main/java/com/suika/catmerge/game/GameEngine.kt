@@ -262,3 +262,4 @@ class GameEngine(
         listener?.onHapticFeedback(newBall.level >= 5)
     }
 }
+
