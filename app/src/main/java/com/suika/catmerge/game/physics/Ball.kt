@@ -1,10 +1,7 @@
 package com.suika.catmerge.game.physics
 
-import kotlin.math.PI
-import kotlin.math.max
-
 /**
- * Represents a circular meme cat ball with physical properties and visual animation state.
+ * Represents a circular meme cat ball with physical properties and visual state.
  */
 class Ball(
     val id: Long,
@@ -17,6 +14,10 @@ class Ball(
     var vx: Float = 0f
     var vy: Float = 0f
 
+    // Previous position for Position-Based Dynamics (PBD)
+    var prevX: Float = x
+    var prevY: Float = y
+
     // Visual rotation
     var angle: Float = 0f // In radians
     var angularVelocity: Float = 0f
@@ -28,13 +29,8 @@ class Ball(
     val mass: Float = (radius * radius * 0.005f).coerceAtLeast(1.0f)
     val invMass: Float = 1.0f / mass
 
-    // Spawn / Merge bounce animation scale
-    var visualScale: Float = 1.35f
-    private var scaleVelocity: Float = -2.5f
-
-    // Merge lifecycle flags
-    var isMerging: Boolean = false
-    var isMarkedForDeletion: Boolean = false
+    // Visual pop scale starts at 1.0f (exact 1:1 match with physics hitbox)
+    var visualScale: Float = 1.0f
 
     // Overflow / Danger tracking
     var timeAboveDanger: Float = 0f
@@ -43,41 +39,23 @@ class Ball(
     val scoreValue: Int = calculateScore(level)
 
     fun update(deltaTime: Float) {
-        // Update position
-        x += vx * deltaTime
-        y += vy * deltaTime
-
-        // Update rotation
-        angle += angularVelocity * deltaTime
-        // Angular damping
-        angularVelocity *= 0.985f
-
-        // Spring-damper for visual scale (elastic pop)
-        if (visualScale != 1.0f) {
-            val displacement = visualScale - 1.0f
-            val springForce = -displacement * 65f
-            val dampingForce = -scaleVelocity * 10f
-            scaleVelocity += (springForce + dampingForce) * deltaTime
-            visualScale += scaleVelocity * deltaTime
-            if (kotlin.math.abs(displacement) < 0.01f && kotlin.math.abs(scaleVelocity) < 0.05f) {
-                visualScale = 1.0f
-                scaleVelocity = 0f
-            }
+        // Smoothly decay visual pop scale back to exact 1.0f
+        if (visualScale > 1.0f) {
+            visualScale = (visualScale - deltaTime * 1.8f).coerceAtLeast(1.0f)
         }
     }
 
-    fun triggerPopEffect(startScale: Float = 1.35f) {
+    fun triggerPopEffect(startScale: Float = 1.15f) {
         visualScale = startScale
-        scaleVelocity = -2.0f
     }
 
     companion object {
         private val RADIUS_MULTIPLIERS = floatArrayOf(
-            1.00f, // Level 0: Kitten with bonnet
-            1.16f, // Level 1: Golden kitten
+            1.00f, // Level 0: Bonnet Kitten
+            1.16f, // Level 1: Golden Kitten
             1.34f, // Level 2: Tabby cat
             1.54f, // Level 3: Polite Tuxedo cat
-            1.76f, // Level 4: White smug cat
+            1.76f, // Level 4: Smug White cat
             2.00f, // Level 5: Grey cat
             2.26f, // Level 6: Smiling black cat
             2.55f, // Level 7: Ginger gigachad
@@ -95,12 +73,10 @@ class Ball(
         }
 
         fun calculateScore(level: Int): Int {
-            // Level 1 = 10 pts, Level 2 = 20, Level 3 = 40, ..., Level 13 = 40960
             if (level <= 0) return 0
             return (1 shl (level - 1)) * 10
         }
 
-        val MAX_LEVEL = 13
+        const val MAX_LEVEL = 13
     }
 }
-

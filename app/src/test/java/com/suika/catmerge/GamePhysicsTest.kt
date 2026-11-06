@@ -74,5 +74,36 @@ class GamePhysicsTest {
         assertEquals(1, engine.balls.size)
         assertEquals(1, engine.balls[0].level)
     }
+
+    @Test
+    fun testDifferentLevelBallsDoNotOverlap() {
+        val flask = FlaskContainer()
+        flask.setup(800f, 1200f)
+
+        val engine = PhysicsEngine(flask, baseRadius = 30f)
+
+        // Level 0 (r=30) and Level 1 (r=34.8) placed initially overlapping
+        val b1 = engine.addBall(400f, 850f, 0)
+        val b2 = engine.addBall(400f, 860f, 1)
+
+        // Run multiple steps to let PBD separate them
+        for (i in 0 until 10) {
+            engine.step(0.016f)
+        }
+
+        val dx = b2.x - b1.x
+        val dy = b2.y - b1.y
+        val dist = kotlin.math.sqrt(dx * dx + dy * dy)
+        val minDist = b1.radius + b2.radius
+
+        assertTrue("Distance between different level balls must be >= sum of radii: dist=$dist, min=$minDist", dist >= minDist - 0.5f)
+        assertEquals(2, engine.balls.size)
+    }
+
+    @Test
+    fun testVisualScaleMatchesPhysicsHitbox() {
+        val ball = Ball(1L, 0f, 0f, 0, 30f)
+        assertEquals("Visual scale must default to 1.0f to prevent visual overlap", 1.0f, ball.visualScale, 0.001f)
+    }
 }
 

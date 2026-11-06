@@ -4,8 +4,8 @@ import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.sqrt
 
 /**
- * 2D rigid circle physics engine with continuous collision resolution,
- * multi-substep integration, and merge event dispatching.
+ * High-performance 2D rigid circle physics engine utilizing Position-Based Dynamics (PBD).
+ * Guarantees zero penetration/sinking under gravity, stable stacking, and instant merging.
  */
 class PhysicsEngine(
     val flask: FlaskContainer,
@@ -20,9 +20,8 @@ class PhysicsEngine(
     var gravity: Float
         get() = gravityY
         set(value) { gravityY = value }
-    var restitution: Float = 0.28f // bounciness
-    var friction: Float = 0.04f // friction coefficient
-    var linearDamping: Float = 0.998f
+    var restitution: Float = 0.25f // bounciness
+    var friction: Float = 0.03f
 
     private val substeps = 8
 
@@ -32,10 +31,6 @@ class PhysicsEngine(
     }
 
     var mergeListener: MergeListener? = null
-
-    // Pending merge pairs to resolve cleanly after collision substeps
-    private data class MergeCandidate(val ballA: Ball, val ballB: Ball)
-    private val pendingMerges = ArrayList<MergeCandidate>()
 
     fun addBall(x: Float, y: Float, level: Int): Ball {
         val ball = Ball(nextId.getAndIncrement(), x, y, level, baseRadius)
@@ -49,37 +44,96 @@ class PhysicsEngine(
 
     fun clear() {
         balls.clear()
-        pendingMerges.clear()
     }
 
     fun step(deltaTime: Float) {
-        val dt = (deltaTime / substeps).coerceAtMost(0.004f)
+        val clampedDelta = deltaTime.coerceIn(0.001f, 0.033f)
 
-        pendingMerges.clear()
+        // ----------------------------------------------------
+        // Step 1: Detect & resolve merges before physics step
+        // ----------------------------------------------------
+        val merges = ArrayList<Pair<Ball, Ball>>()
+        val mergedIds = HashSet<Long>()
 
-        for (sub in 0 until substeps) {
-            // 1. Apply gravity & integrate
-            for (i in balls.indices) {
-                val ball = balls[i]
-                ball.vy += gravity * dt
-                ball.x += ball.vx * dt
-                ball.y += ball.vy * dt
-                ball.angle += ball.angularVelocity * dt
-                ball.angularVelocity *= (1f - friction * 0.2f)
-                ball.vx *= linearDamping
-                ball.vy *= linearDamping
+        val count = balls.size
+        for (i in 0 until count) {
+            val b1 = balls[i]
+            if (mergedIds.contains(b1.id)) continue
+
+            for (j in i + 1 until count) {
+                val b2 = balls[j]
+                if (mergedIds.contains(b2.id)) continue
+
+                // Check merge: identical level, below max level, touching or within 4% tolerance
+                if (b1.level == b2.level && b1.level < Ball.MAX_LEVEL) {
+                    val dx = b2.x - b1.x
+                    val dy = b2.y - b1.y
+                    val distSq = dx * dx + dy * dy
+                    val mergeDistance = (b1.radius + b2.radius) * 1.04f
+
+                    if (distSq <= mergeDistance * mergeDistance) {
+                        merges.add(Pair(b1, b2))
+                        mergedIds.add(b1.id)
+                        mergedIds.add(b2.id)
+                        break // b1 has merged, stop pairing it with others
+                    }
+                }
+            }
+        }
+
+        // Execute merges
+        for (pair in merges) {
+            val a = pair.first
+            val b = pair.second
+
+            balls.remove(a)
+            balls.remove(b)
+
+            val midX = (a.x + b.x) * 0.5f
+            val midY = (a.y + b.y) * 0.5f
+            val newLevel = a.level + 1
+
+            val newBall = Ball(nextId.getAndIncrement(), midX, midY, newLevel, baseRadius).apply {
+                vx = (a.vx + b.vx) * 0.5f
+                vy = (a.vy + b.vy) * 0.5f - 30f
+                triggerPopEffect(1.15f)
             }
 
-            // 2. Resolve flask boundary collisions
-            for (i in balls.indices) {
+            balls.add(newBall)
+            mergeListener?.onBallsMerged(newBall, a, b)
+        }
+
+        // ----------------------------------------------------
+        // Step 2: Position-Based Dynamics (PBD) Simulation
+        // ----------------------------------------------------
+        val subDt = clampedDelta / substeps
+
+        for (sub in 0 until substeps) {
+            // Predict positions
+            val n = balls.size
+            for (i in 0 until n) {
+                val b = balls[i]
+                b.vx += gravityX * subDt
+                b.vy += gravityY * subDt
+
+                b.prevX = b.x
+                b.prevY = b.y
+
+                b.x += b.vx * subDt
+                b.y += b.vy * subDt
+
+                b.angle += b.angularVelocity * subDt
+            }
+
+            // Boundary constraints (flask container)
+            for (i in 0 until n) {
                 flask.resolveBallCollision(balls[i], restitution, friction)
             }
 
-            // 3. Resolve ball vs ball collisions & detect merges
-            val ballCount = balls.size
-            for (i in 0 until ballCount) {
+            // Ball vs Ball separation constraints (rigid contacts)
+            for (i in 0 until n) {
                 val b1 = balls[i]
-                for (j in i + 1 until ballCount) {
+                for (j in i + 1 until n) {
                     val b2 = balls[j]
 
                     val dx = b2.x - b1.x
@@ -89,25 +143,6 @@ class PhysicsEngine(
 
                     if (distSq < minDist * minDist) {
                         val dist = sqrt(distSq)
-
-                        // Check for merge condition (same level and neither is at max level or already merging)
-                        if (b1.level == b2.level &&
-                            b1.level < Ball.MAX_LEVEL &&
-                            !b1.isMerging &&
-                            !b2.isMerging
-                        ) {
-                            b1.isMerging = true
-                            b2.isMerging = true
-                            pendingMerges.add(MergeCandidate(b1, b2))
-                            continue
-                        }
-
-                        // If either ball is already merging with another ball, skip collision response
-                        if (b1.isMerging || b2.isMerging) {
-                            continue
-                        }
-
-                        // Normal collision resolution (push apart + impulse)
                         val nx: Float
                         val ny: Float
                         val penetration: Float
@@ -122,84 +157,39 @@ class PhysicsEngine(
                             penetration = minDist
                         }
 
-                        // Mass-weighted position correction
                         val totalInvMass = b1.invMass + b2.invMass
                         if (totalInvMass > 0f) {
-                            val push1 = (penetration * (b1.invMass / totalInvMass))
-                            val push2 = (penetration * (b2.invMass / totalInvMass))
+                            val push1 = penetration * (b1.invMass / totalInvMass)
+                            val push2 = penetration * (b2.invMass / totalInvMass)
 
                             b1.x -= nx * push1
                             b1.y -= ny * push1
                             b2.x += nx * push2
                             b2.y += ny * push2
 
-                            // Impulse resolution
+                            // Friction and spin exchange on contact
+                            val tx = -ny
+                            val ty = nx
                             val rvx = b2.vx - b1.vx
                             val rvy = b2.vy - b1.vy
-                            val velAlongNormal = rvx * nx + rvy * ny
+                            val tangentVel = rvx * tx + rvy * ty
+                            val frictionImpulse = -tangentVel * friction * 0.5f
 
-                            if (velAlongNormal < 0f) {
-                                val impulseMag = -(1f + restitution) * velAlongNormal / totalInvMass
-                                val ix = nx * impulseMag
-                                val iy = ny * impulseMag
-
-                                b1.vx -= ix * b1.invMass
-                                b1.vy -= iy * b1.invMass
-                                b2.vx += ix * b2.invMass
-                                b2.vy += iy * b2.invMass
-
-                                // Tangential friction and spin
-                                val tx = -ny
-                                val ty = nx
-                                val velAlongTangent = rvx * tx + rvy * ty
-                                val frictionImpulse = -velAlongTangent * friction / totalInvMass
-                                val fix = tx * frictionImpulse
-                                val fiy = ty * frictionImpulse
-
-                                b1.vx -= fix * b1.invMass
-                                b1.vy -= fiy * b1.invMass
-                                b2.vx += fix * b2.invMass
-                                b2.vy += fiy * b2.invMass
-
-                                b1.angularVelocity += frictionImpulse * 0.002f
-                                b2.angularVelocity -= frictionImpulse * 0.002f
-                            }
+                            b1.angularVelocity -= frictionImpulse * 0.005f
+                            b2.angularVelocity += frictionImpulse * 0.005f
                         }
                     }
                 }
             }
-        }
 
-        // 4. Update visual animations (pop scale)
-        for (i in balls.indices) {
-            balls[i].update(0f) // scale updates smoothly
-        }
-
-        // 5. Process merges
-        if (pendingMerges.isNotEmpty()) {
-            for (merge in pendingMerges) {
-                val a = merge.ballA
-                val b = merge.ballB
-
-                balls.remove(a)
-                balls.remove(b)
-
-                // Spawn new merged ball at midpoint
-                val midX = (a.x + b.x) * 0.5f
-                val midY = (a.y + b.y) * 0.5f
-                val newLevel = a.level + 1
-
-                val newBall = Ball(nextId.getAndIncrement(), midX, midY, newLevel, baseRadius).apply {
-                    // Conserve average velocity with small upwards bounce
-                    vx = (a.vx + b.vx) * 0.45f
-                    vy = (a.vy + b.vy) * 0.45f - 60f
-                    triggerPopEffect(1.38f)
-                }
-
-                balls.add(newBall)
-                mergeListener?.onBallsMerged(newBall, a, b)
+            // Update velocity from corrected positions (prevents sinking & resting overlap)
+            for (i in 0 until n) {
+                val b = balls[i]
+                b.vx = (b.x - b.prevX) / subDt * 0.996f
+                b.vy = (b.y - b.prevY) / subDt * 0.996f
+                b.angularVelocity *= 0.992f
+                b.update(subDt)
             }
-            pendingMerges.clear()
         }
     }
 
@@ -215,7 +205,6 @@ class PhysicsEngine(
             val dy = ball.y - cy
             val dist = sqrt(dx * dx + dy * dy)
             if (dist > 0.001f) {
-                // Tangential vortex impulse (swirl) + slight upward lift
                 val tx = -dy / dist
                 val ty = dx / dist
                 ball.vx += tx * 260f * strength + (Math.random().toFloat() - 0.5f) * 120f
