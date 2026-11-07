@@ -114,17 +114,30 @@ class FlaskContainer {
     fun setup(viewWidth: Float, viewHeight: Float) {
         centerX = viewWidth / 2f
 
-        // Bottom circular chamber occupies ~90% of screen width
-        circleRadius = (viewWidth * 0.45f).coerceAtMost(viewHeight * 0.32f)
-        circleCenterY = viewHeight - circleRadius - 40f
+        // Bottom circular chamber occupies ~88% of screen width
+        circleRadius = (viewWidth * 0.44f).coerceAtMost(viewHeight * 0.35f)
 
-        // Neck dimensions: vertical white lines
+        // Neck dimensions: vertical white lines with a natural, proportional neck length
         neckHalfWidth = circleRadius * 0.22f
-        neckTopY = 90f // just below top HUD
+        val neckLength = circleRadius * 0.65f // Proportional neck (no longer overstretched)
 
-        // Intersection with circle: x = cx ± w_half -> (y - cy)^2 = R^2 - w_half^2
         val dy = sqrt(circleRadius * circleRadius - neckHalfWidth * neckHalfWidth)
-        neckBottomY = circleCenterY - dy
+        val jarTotalHeight = neckLength + dy + circleRadius
+
+        // Center the jar vertically between top HUD and bottom screen margin
+        val topHudSpace = 220f.coerceAtMost(viewHeight * 0.16f)
+        val bottomMargin = 70f
+        val availableHeight = viewHeight - topHudSpace - bottomMargin
+
+        val verticalOffset = if (availableHeight > jarTotalHeight) {
+            topHudSpace + (availableHeight - jarTotalHeight) * 0.45f
+        } else {
+            topHudSpace
+        }
+
+        neckTopY = verticalOffset
+        neckBottomY = neckTopY + neckLength
+        circleCenterY = neckBottomY + dy
 
         // Danger line located near top third of neck
         dangerLineY = neckTopY + (neckBottomY - neckTopY) * 0.35f
