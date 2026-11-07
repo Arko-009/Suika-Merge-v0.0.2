@@ -124,13 +124,13 @@ class FlaskContainer {
         val dy = sqrt(circleRadius * circleRadius - neckHalfWidth * neckHalfWidth)
         val jarTotalHeight = neckLength + dy + circleRadius
 
-        // Center the jar vertically between top HUD and bottom screen margin
+        // Position the jar grounded towards the bottom of the screen with a clean margin
         val topHudSpace = 220f.coerceAtMost(viewHeight * 0.16f)
         val bottomMargin = 70f
         val availableHeight = viewHeight - topHudSpace - bottomMargin
 
         val verticalOffset = if (availableHeight > jarTotalHeight) {
-            topHudSpace + (availableHeight - jarTotalHeight) * 0.45f
+            topHudSpace + (availableHeight - jarTotalHeight) * 0.80f
         } else {
             topHudSpace
         }
