@@ -277,3 +277,4 @@ class BoxContainer : GameContainer {
         canvas.drawPath(dangerLinePath, dangerLinePaint)
     }
 }
+
