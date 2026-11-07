@@ -115,6 +115,7 @@ class MainActivity : AppCompatActivity(), GameEngine.GameEngineListener {
         binding.txtScore.text = "0"
         binding.txtHighScore.text = "${prefs.highScore}"
         binding.btnSound.text = if (soundManager.isSoundEnabled) "🔊" else "🔇"
+        binding.imgNextBall.setImageResource(ballDrawables[0])
 
         engine.startNewGame()
     }
@@ -165,9 +166,28 @@ class MainActivity : AppCompatActivity(), GameEngine.GameEngineListener {
     }
 
     override fun onNextBallChanged(nextLevel: Int) {
+        // Next ball preview is rendered directly at the dropper in GameView
+    }
+
+    override fun onCurrentMaxBallChanged(maxLevel: Int) {
         runOnUiThread {
-            val idx = nextLevel.coerceIn(0, ballDrawables.size - 1)
+            val idx = maxLevel.coerceIn(0, ballDrawables.size - 1)
             binding.imgNextBall.setImageResource(ballDrawables[idx])
+            // Celebratory pop animation when a new highest cat level is achieved
+            if (maxLevel > 0) {
+                binding.imgNextBall.animate()
+                    .scaleX(1.25f)
+                    .scaleY(1.25f)
+                    .setDuration(120)
+                    .withEndAction {
+                        binding.imgNextBall.animate()
+                            .scaleX(1.0f)
+                            .scaleY(1.0f)
+                            .setDuration(120)
+                            .start()
+                    }
+                    .start()
+            }
         }
     }
 

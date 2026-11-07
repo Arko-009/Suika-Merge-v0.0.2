@@ -36,6 +36,9 @@ class GameEngine(
         private set
     var highestLevelUnlocked = prefs.highestLevelUnlocked
         private set
+    // Currently the max level cat achieved in the active game
+    var currentMaxLevel: Int = 0
+        private set
 
     // Combo system
     var comboCount = 1
@@ -67,6 +70,7 @@ class GameEngine(
     interface GameEngineListener {
         fun onScoreChanged(score: Int, highScore: Int)
         fun onNextBallChanged(nextLevel: Int)
+        fun onCurrentMaxBallChanged(maxLevel: Int)
         fun onCombo(combo: Int)
         fun onGameOver(finalScore: Int, highestLevel: Int, isNewHighScore: Boolean)
         fun onHapticFeedback(heavy: Boolean)
@@ -90,11 +94,13 @@ class GameEngine(
         canDrop = true
         dropperX = flask.centerX
         currentDropperLevel = 0
+        currentMaxLevel = 0
         prepareNextBall()
 
         state = State.PLAYING
         listener?.onScoreChanged(currentScore, highScore)
         listener?.onNextBallChanged(nextBallLevel)
+        listener?.onCurrentMaxBallChanged(currentMaxLevel)
     }
 
     fun pause() {
@@ -133,6 +139,10 @@ class GameEngine(
         val dropY = flask.neckTopY - 20f
 
         val ball = physics.addBall(clampedX, dropY, currentDropperLevel)
+        if (currentDropperLevel > currentMaxLevel) {
+            currentMaxLevel = currentDropperLevel
+            listener?.onCurrentMaxBallChanged(currentMaxLevel)
+        }
         // Give slight downwards velocity and random subtle spin
         ball.vy = 120f
         ball.angularVelocity = (Math.random().toFloat() - 0.5f) * 4f
@@ -249,6 +259,11 @@ class GameEngine(
         if (newBall.level > highestLevelUnlocked) {
             highestLevelUnlocked = newBall.level
             prefs.highestLevelUnlocked = highestLevelUnlocked
+        }
+
+        if (newBall.level > currentMaxLevel) {
+            currentMaxLevel = newBall.level
+            listener?.onCurrentMaxBallChanged(currentMaxLevel)
         }
 
         prefs.totalMerges++
