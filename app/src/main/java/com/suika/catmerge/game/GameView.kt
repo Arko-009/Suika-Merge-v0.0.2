@@ -19,6 +19,7 @@ import android.view.SurfaceHolder
 import android.view.SurfaceView
 import com.suika.catmerge.R
 import com.suika.catmerge.game.physics.Ball
+import com.suika.catmerge.game.physics.GameContainer
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -133,8 +134,8 @@ class GameView @JvmOverloads constructor(
         surfaceWidth = width.toFloat()
         surfaceHeight = height.toFloat()
         engine?.flask?.setup(surfaceWidth, surfaceHeight)
-        // Set base ball radius scaled comfortably for the neck (cat fits smoothly inside vertical white lines)
-        val baseRadius = engine?.flask?.neckHalfWidth?.times(0.55f) ?: 32f
+        // Base ball radius scaled comfortably to fit any container shape
+        val baseRadius = (engine?.flask?.circleRadius?.times(0.122f) ?: 32f).coerceIn(24f, 50f)
         engine?.physics?.baseRadius = baseRadius
     }
 

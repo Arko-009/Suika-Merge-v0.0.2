@@ -19,21 +19,23 @@ import kotlin.math.sqrt
  * - Large RGB Rainbow Glowing circular chamber at the bottom
  * - Solid physics collision boundaries with zero tunneling
  */
-class FlaskContainer {
+class FlaskContainer : GameContainer {
 
-    var centerX: Float = 0f
+    override val containerType: ContainerType = ContainerType.FLASK
+
+    override var centerX: Float = 0f
         private set
-    var circleCenterY: Float = 0f
+    override var circleCenterY: Float = 0f
         private set
-    var circleRadius: Float = 0f
+    override var circleRadius: Float = 0f
         private set
-    var neckHalfWidth: Float = 0f
+    override var neckHalfWidth: Float = 0f
         private set
-    var neckTopY: Float = 0f
+    override var neckTopY: Float = 0f
         private set
-    var neckBottomY: Float = 0f
+    override var neckBottomY: Float = 0f
         private set
-    var dangerLineY: Float = 0f
+    override var dangerLineY: Float = 0f
         private set
 
     // Aliases for backwards compatibility
@@ -111,7 +113,7 @@ class FlaskContainer {
         Color.parseColor("#FF0055")  // Loop back to Neon Red
     )
 
-    fun setup(viewWidth: Float, viewHeight: Float) {
+    override fun setup(viewWidth: Float, viewHeight: Float) {
         centerX = viewWidth / 2f
 
         // Bottom circular chamber occupies ~88% of screen width
@@ -188,7 +190,7 @@ class FlaskContainer {
         rainbowGlowPaint.alpha = 80
     }
 
-    fun update(deltaTime: Float) {
+    override fun update(deltaTime: Float) {
         // Slowly rotate RGB rainbow around the circle for animated neon effect
         rainbowRotation = (rainbowRotation + deltaTime * 30f) % 360f
         shaderMatrix.setRotate(rainbowRotation, centerX, circleCenterY)
@@ -201,7 +203,7 @@ class FlaskContainer {
     /**
      * Resolves collisions for balls against the neck and the RGB circle chamber.
      */
-    fun resolveBallCollision(ball: Ball, restitution: Float = 0.25f, friction: Float = 0.03f): Boolean {
+    override fun resolveBallCollision(ball: Ball, restitution: Float, friction: Float): Boolean {
         var collided = false
 
         val leftX = centerX - neckHalfWidth
@@ -317,7 +319,7 @@ class FlaskContainer {
     /**
      * Renders the white neck and glowing RGB Rainbow circular chamber.
      */
-    fun draw(canvas: Canvas, isInDanger: Boolean) {
+    override fun draw(canvas: Canvas, isInDanger: Boolean) {
         // 1. White Vertical Neck (outer glow + inner white stroke)
         canvas.drawPath(leftNeckPath, neckGlowPaint)
         canvas.drawPath(rightNeckPath, neckGlowPaint)

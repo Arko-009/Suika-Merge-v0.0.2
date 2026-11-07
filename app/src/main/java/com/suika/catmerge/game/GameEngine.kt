@@ -5,14 +5,16 @@ import com.suika.catmerge.game.audio.SoundManager
 import com.suika.catmerge.game.data.GamePreferences
 import com.suika.catmerge.game.effects.ParticleSystem
 import com.suika.catmerge.game.physics.Ball
-import com.suika.catmerge.game.physics.FlaskContainer
+import com.suika.catmerge.game.physics.ContainerFactory
+import com.suika.catmerge.game.physics.ContainerType
+import com.suika.catmerge.game.physics.GameContainer
 import com.suika.catmerge.game.physics.PhysicsEngine
 
 /**
  * Core game state manager, drop logic, scoring, combos, and danger monitoring.
  */
 class GameEngine(
-    val flask: FlaskContainer,
+    var flask: GameContainer,
     val physics: PhysicsEngine,
     val soundManager: SoundManager,
     val particleSystem: ParticleSystem,
@@ -81,6 +83,15 @@ class GameEngine(
     init {
         physics.mergeListener = this
         prepareNextBall()
+    }
+
+    fun setContainerType(type: ContainerType, viewWidth: Float = 0f, viewHeight: Float = 0f) {
+        val newContainer = ContainerFactory.create(type)
+        if (viewWidth > 0f && viewHeight > 0f) {
+            newContainer.setup(viewWidth, viewHeight)
+        }
+        flask = newContainer
+        physics.container = newContainer
     }
 
     fun startNewGame() {

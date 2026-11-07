@@ -130,5 +130,48 @@ class GamePhysicsTest {
         // Verify the ball successfully reached the chamber (y > neckBottomY)
         assertTrue("Ball must enter the lower chamber smoothly", ball.y > flask.neckBottomY)
     }
+
+    @Test
+    fun testContainerFactory() {
+        val flask = com.suika.catmerge.game.physics.ContainerFactory.create(com.suika.catmerge.game.physics.ContainerType.FLASK)
+        val box = com.suika.catmerge.game.physics.ContainerFactory.create(com.suika.catmerge.game.physics.ContainerType.BOX)
+        val hexagon = com.suika.catmerge.game.physics.ContainerFactory.create(com.suika.catmerge.game.physics.ContainerType.HEXAGON)
+
+        assertEquals(com.suika.catmerge.game.physics.ContainerType.FLASK, flask.containerType)
+        assertEquals(com.suika.catmerge.game.physics.ContainerType.BOX, box.containerType)
+        assertEquals(com.suika.catmerge.game.physics.ContainerType.HEXAGON, hexagon.containerType)
+    }
+
+    @Test
+    fun testBoxContainerCollisionAndSettling() {
+        val box = com.suika.catmerge.game.physics.BoxContainer()
+        box.setup(800f, 1200f)
+
+        val engine = PhysicsEngine(box, baseRadius = 30f)
+        val ball = engine.addBall(box.centerX, box.neckTopY + 20f, 0)
+
+        for (i in 0 until 60) {
+            engine.step(0.016f)
+        }
+
+        // Ball should settle inside the box above floor
+        assertTrue("Ball must be inside horizontal walls", ball.x > box.leftX && ball.x < box.rightX)
+        assertTrue("Ball must stay above bottom floor", ball.y <= box.bottomY)
+    }
+
+    @Test
+    fun testHexagonContainerCollisionAndSettling() {
+        val hex = com.suika.catmerge.game.physics.HexagonContainer()
+        hex.setup(800f, 1200f)
+
+        val engine = PhysicsEngine(hex, baseRadius = 30f)
+        val ball = engine.addBall(hex.centerX, hex.neckTopY + 20f, 0)
+
+        for (i in 0 until 60) {
+            engine.step(0.016f)
+        }
+
+        assertTrue("Ball must descend into chamber", ball.y > hex.neckTopY)
+    }
 }
 

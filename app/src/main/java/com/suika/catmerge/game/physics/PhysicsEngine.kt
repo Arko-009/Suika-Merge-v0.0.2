@@ -8,9 +8,11 @@ import kotlin.math.sqrt
  * Guarantees zero penetration/sinking under gravity, stable stacking, and instant merging.
  */
 class PhysicsEngine(
-    val flask: FlaskContainer,
+    var container: GameContainer,
     var baseRadius: Float
 ) {
+    // Backwards compatibility alias
+    val flask: GameContainer get() = container
     val balls = ArrayList<Ball>()
     private val nextId = AtomicLong(1)
 
@@ -125,9 +127,9 @@ class PhysicsEngine(
                 b.angle += b.angularVelocity * subDt
             }
 
-            // Boundary constraints (flask container)
+            // Boundary constraints (container)
             for (i in 0 until n) {
-                flask.resolveBallCollision(balls[i], restitution, friction)
+                container.resolveBallCollision(balls[i], restitution, friction)
             }
 
             // Ball vs Ball separation constraints (rigid contacts)
@@ -208,8 +210,8 @@ class PhysicsEngine(
      * Applies a fluid stirring vortex / shake impulse to unstick balls.
      */
     fun applyStirImpulse(strength: Float = 1.0f) {
-        val cx = flask.centerX
-        val cy = flask.circleCenterY
+        val cx = container.centerX
+        val cy = container.circleCenterY
 
         for (ball in balls) {
             val dx = ball.x - cx

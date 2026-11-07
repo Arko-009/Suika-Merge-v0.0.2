@@ -22,6 +22,10 @@ class GamePreferences(context: Context) {
             }
         }
 
+    var selectedShape: String
+        get() = prefs.getString(KEY_SELECTED_SHAPE, "FLASK") ?: "FLASK"
+        set(value) = prefs.edit().putString(KEY_SELECTED_SHAPE, value).apply()
+
     var isSoundEnabled: Boolean
         get() = prefs.getBoolean(KEY_SOUND_ENABLED, true)
         set(value) = prefs.edit().putBoolean(KEY_SOUND_ENABLED, value).apply()
@@ -52,6 +56,7 @@ class GamePreferences(context: Context) {
     }
 
     companion object {
+        private const val KEY_SELECTED_SHAPE = "selected_shape"
         private const val KEY_HIGH_SCORE = "high_score"
         private const val KEY_HIGHEST_LEVEL = "highest_level"
         private const val KEY_SOUND_ENABLED = "sound_enabled"

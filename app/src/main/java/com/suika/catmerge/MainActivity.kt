@@ -7,6 +7,7 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.view.View
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -16,7 +17,9 @@ import com.suika.catmerge.game.GameEngine
 import com.suika.catmerge.game.audio.SoundManager
 import com.suika.catmerge.game.data.GamePreferences
 import com.suika.catmerge.game.effects.ParticleSystem
-import com.suika.catmerge.game.physics.FlaskContainer
+import com.suika.catmerge.game.physics.ContainerFactory
+import com.suika.catmerge.game.physics.ContainerType
+import com.suika.catmerge.game.physics.GameContainer
 import com.suika.catmerge.game.physics.PhysicsEngine
 
 class MainActivity : AppCompatActivity(), GameEngine.GameEngineListener {
@@ -25,10 +28,12 @@ class MainActivity : AppCompatActivity(), GameEngine.GameEngineListener {
 
     private lateinit var prefs: GamePreferences
     private lateinit var soundManager: SoundManager
-    private lateinit var flask: FlaskContainer
+    private lateinit var container: GameContainer
     private lateinit var physics: PhysicsEngine
     private lateinit var particleSystem: ParticleSystem
     private lateinit var engine: GameEngine
+
+    private var selectedContainerType: ContainerType = ContainerType.FLASK
 
     private var vibrator: Vibrator? = null
 
@@ -102,10 +107,17 @@ class MainActivity : AppCompatActivity(), GameEngine.GameEngineListener {
         soundManager = SoundManager(this).apply {
             isSoundEnabled = prefs.isSoundEnabled
         }
-        flask = FlaskContainer()
-        physics = PhysicsEngine(flask, baseRadius = 36f)
+
+        selectedContainerType = try {
+            ContainerType.valueOf(prefs.selectedShape)
+        } catch (e: Exception) {
+            ContainerType.FLASK
+        }
+
+        container = ContainerFactory.create(selectedContainerType)
+        physics = PhysicsEngine(container, baseRadius = 36f)
         particleSystem = ParticleSystem()
-        engine = GameEngine(flask, physics, soundManager, particleSystem, prefs).apply {
+        engine = GameEngine(container, physics, soundManager, particleSystem, prefs).apply {
             listener = this@MainActivity
         }
 
@@ -113,20 +125,58 @@ class MainActivity : AppCompatActivity(), GameEngine.GameEngineListener {
 
         // UI initial values
         binding.txtScore.text = "0"
-        binding.txtHighScore.text = "${prefs.highScore}"
+        binding.txtHighScore.text = "%,d".format(prefs.highScore)
         binding.btnSound.text = if (soundManager.isSoundEnabled) "🔊" else "🔇"
         binding.imgNextBall.setImageResource(ballDrawables[0])
 
-        engine.startNewGame()
+        // Start on Home / Landing page
+        binding.topHudBar.visibility = View.GONE
+        binding.layoutHome.visibility = View.VISIBLE
+        updateHomeStats()
+        updateShapeSelectionUI()
     }
 
     private fun setupListeners() {
-        // Stir button: swirls / shakes flask to loosen balls
+        // Back press handling
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (binding.layoutHome.visibility == View.VISIBLE) {
+                    finish()
+                } else if (binding.layoutGameOver.visibility == View.VISIBLE) {
+                    binding.layoutGameOver.visibility = View.GONE
+                    returnToHome()
+                } else if (binding.layoutPause.visibility == View.VISIBLE) {
+                    binding.layoutPause.visibility = View.GONE
+                    engine.resume()
+                } else {
+                    engine.pause()
+                    binding.layoutPause.visibility = View.VISIBLE
+                }
+            }
+        })
+
+        // Shape selection cards on Home Page
+        binding.cardShapeFlask.setOnClickListener {
+            selectShape(ContainerType.FLASK)
+        }
+        binding.cardShapeBox.setOnClickListener {
+            selectShape(ContainerType.BOX)
+        }
+        binding.cardShapeHexagon.setOnClickListener {
+            selectShape(ContainerType.HEXAGON)
+        }
+
+        // Start Game button on Home Page
+        binding.btnStartGame.setOnClickListener {
+            startGame()
+        }
+
+        // Stir button: swirls / shakes container to loosen balls
         binding.btnStir.setOnClickListener {
             engine.stirFlask()
         }
 
-        // Sound toggle button
+        // Sound toggle button in HUD
         binding.btnSound.setOnClickListener {
             soundManager.isSoundEnabled = !soundManager.isSoundEnabled
             prefs.isSoundEnabled = soundManager.isSoundEnabled
@@ -139,16 +189,22 @@ class MainActivity : AppCompatActivity(), GameEngine.GameEngineListener {
             binding.layoutPause.visibility = View.VISIBLE
         }
 
-        // Resume button in pause modal
+        // Resume button in settings modal
         binding.btnResume.setOnClickListener {
             binding.layoutPause.visibility = View.GONE
             engine.resume()
         }
 
-        // Restart from pause modal
+        // Restart button in settings modal
         binding.btnRestartFromPause.setOnClickListener {
             binding.layoutPause.visibility = View.GONE
             engine.startNewGame()
+        }
+
+        // Home button in settings modal
+        binding.btnHomeFromPause.setOnClickListener {
+            binding.layoutPause.visibility = View.GONE
+            returnToHome()
         }
 
         // Play Again button in game over modal
@@ -156,6 +212,62 @@ class MainActivity : AppCompatActivity(), GameEngine.GameEngineListener {
             binding.layoutGameOver.visibility = View.GONE
             engine.startNewGame()
         }
+
+        // Home button in game over modal
+        binding.btnHomeFromGameOver.setOnClickListener {
+            binding.layoutGameOver.visibility = View.GONE
+            returnToHome()
+        }
+    }
+
+    private fun selectShape(type: ContainerType) {
+        selectedContainerType = type
+        prefs.selectedShape = type.name
+        updateShapeSelectionUI()
+        triggerVibration(false)
+    }
+
+    private fun updateShapeSelectionUI() {
+        val selectedBg = R.drawable.bg_shape_card_selected
+        val normalBg = R.drawable.bg_shape_card_normal
+
+        binding.cardShapeFlask.setBackgroundResource(
+            if (selectedContainerType == ContainerType.FLASK) selectedBg else normalBg
+        )
+        binding.cardShapeBox.setBackgroundResource(
+            if (selectedContainerType == ContainerType.BOX) selectedBg else normalBg
+        )
+        binding.cardShapeHexagon.setBackgroundResource(
+            if (selectedContainerType == ContainerType.HEXAGON) selectedBg else normalBg
+        )
+
+        binding.txtShapeDescription.text = selectedContainerType.tagline
+    }
+
+    private fun updateHomeStats() {
+        binding.txtHomeHighScore.text = "%,d".format(prefs.highScore)
+        binding.txtHomeTotalMerges.text = "%,d".format(prefs.totalMerges)
+    }
+
+    private fun startGame() {
+        binding.layoutHome.visibility = View.GONE
+        binding.topHudBar.visibility = View.VISIBLE
+
+        val vw = binding.gameView.width.toFloat()
+        val vh = binding.gameView.height.toFloat()
+        engine.setContainerType(selectedContainerType, vw, vh)
+        val baseRadius = (engine.flask.circleRadius * 0.122f).coerceIn(24f, 50f)
+        engine.physics.baseRadius = baseRadius
+        engine.startNewGame()
+        triggerVibration(false)
+    }
+
+    private fun returnToHome() {
+        engine.pause()
+        binding.topHudBar.visibility = View.GONE
+        binding.layoutHome.visibility = View.VISIBLE
+        updateHomeStats()
+        triggerVibration(false)
     }
 
     override fun onScoreChanged(score: Int, highScore: Int) {
