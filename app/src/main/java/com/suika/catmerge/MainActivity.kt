@@ -133,7 +133,7 @@ class MainActivity : AppCompatActivity(), GameEngine.GameEngineListener {
             binding.btnSound.text = if (soundManager.isSoundEnabled) "🔊" else "🔇"
         }
 
-        // Pause button
+        // Settings button: opens settings & pause modal
         binding.btnPause.setOnClickListener {
             engine.pause()
             binding.layoutPause.visibility = View.VISIBLE
